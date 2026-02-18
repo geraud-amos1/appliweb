@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Discord Pendu</title>
+    <style>
+        /* --- STYLE DISCORD --- */
+        body { margin: 0; font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #36393f; color: #dcddde; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* La Sidebar de gauche (Serveurs) */
+        .sidebar { width: 72px; background-color: #202225; display: flex; flex-direction: column; align-items: center; padding-top: 12px; }
+        .server-icon { width: 48px; height: 48px; background-color: #5865F2; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .server-icon:hover { border-radius: 30%; background-color: #5865F2; }
+
+        /* Zone principale */
+        .main { flex: 1; display: flex; flex-direction: column; background-color: #36393f; }
+        
+        /* Header */
+        .header { height: 48px; border-bottom: 1px solid #202225; display: flex; align-items: center; padding: 0 16px; font-weight: bold; box-shadow: 0 1px 0 rgba(4,4,5,0.2); }
+        .hashtag { color: #8e9297; margin-right: 8px; font-size: 20px; }
+
+        /* Zone de Chat */
+        #chatBox { flex: 1; overflow-y: scroll; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        /* Scrollbar custom */
+        #chatBox::-webkit-scrollbar { width: 8px; background-color: #2e3338; }
+        #chatBox::-webkit-scrollbar-thumb { background-color: #202225; border-radius: 4px; }
+
+        /* Les Messages */
+        .msg { display: flex; margin-top: 6px; }
+        .avatar { width: 40px; height: 40px; border-radius: 50%; background-color: #faa61a; margin-right: 16px; flex-shrink: 0; }
+        .msg-content { display: flex; flex-direction: column; }
+        .username { font-weight: bold; font-size: 1rem; color: #fff; cursor: pointer; }
+        .username:hover { text-decoration: underline; }
+        .timestamp { font-size: 0.75rem; color: #72767d; margin-left: 8px; font-weight: normal; }
+        .text { font-size: 1rem; color: #dcddde; line-height: 1.375rem; }
+
+        /* Types de messages spéciaux */
+        .system-msg { border-left: 4px solid #5865F2; padding-left: 10px; background: rgba(88, 101, 242, 0.1); border-radius: 4px; padding: 5px; }
+        .private-clue { border-left: 4px solid #3ba55c; background: rgba(59, 165, 92, 0.1); color: #3ba55c; }
+        .error-msg { border-left: 4px solid #ed4245; background: rgba(237, 66, 69, 0.1); color: #ed4245; }
+        .win-msg { border: 2px solid #faa61a; background: rgba(250, 166, 26, 0.2); text-align: center; font-size: 1.2em; padding: 20px; border-radius: 8px; color: #fff; }
+
+        /* Zone de saisie */
+        .input-area { padding: 0 16px 24px; }
+        .input-container { background-color: #40444b; border-radius: 8px; padding: 10px; display: flex; align-items: center; }
+        .input-field { background: transparent; border: none; color: #dcddde; width: 100%; font-size: 1rem; outline: none; }
+        
+        /* Actions du Jeu (Boutons au dessus de l'input) */
+        .game-controls { padding: 10px 16px; display: flex; gap: 10px; }
+        .btn { background: #4f545c; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+        .btn:hover { background: #5d6269; }
+        .btn-guess { background-color: #3ba55c; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="server-icon">P</div>
+    </div>
+
+    <div class="main">
+        <div class="header">
+            <span class="hashtag">#</span>
+            <span>général-pendu</span>
+        </div>
+
+        <div id="chatBox">
+            </div>
+
+        <div class="game-controls">
+            <span style="color: #b9bbbe; font-size: 0.9em; align-self: center;">Commandes : </span>
+            <button class="btn" onclick="mode = 'CHAT'; updatePlaceholder()">💬 Chat</button>
+            <button class="btn" onclick="mode = 'LETTER'; updatePlaceholder()">🔤 Tester une Lettre</button>
+            <button class="btn btn-guess" onclick="mode = 'WORD'; updatePlaceholder()">🏆 Tenter le Mot</button>
+        </div>
+
+        <div class="input-area">
+            <div class="input-container">
+                <input type="text" id="messageInput" class="input-field" placeholder="Envoyer un message sur #général-pendu" autocomplete="off">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = new WebSocket("ws://localhost:3000");
+        let mode = 'CHAT'; // Modes: CHAT, LETTRE, MOT
+
+        const chatBox = document.getElementById("chatBox");
+        const input = document.getElementById("messageInput");
+
+        // UI : Changement du placeholder selon le mode
+        function updatePlaceholder() {
+            input.focus();
+            if(mode === 'CHAT') input.placeholder = "Envoyer un message...";
+            else if(mode === 'LETTER') input.placeholder = "Entrez UNE seule lettre pour avoir un indice...";
+            else if(mode === 'WORD') input.placeholder = "Entrez le MOT complet pour gagner !";
+        }
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            addMessageToChat(data);
+        };
+
+        // Fonction pour générer le HTML des messages
+        function addMessageToChat(data) {
+            let html = "";
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            if (data.type === "chat") {
+                // Message classique Discord
+                html = `
+                <div class="msg">
+                    <div class="avatar"></div>
+                    <div class="msg-content">
+                        <div>
+                            <span class="username">${data.from}</span>
+                            <span class="timestamp">Aujourd'hui à ${time}</span>
+                        </div>
+                        <div class="text">${data.content}</div>
+                    </div>
+                </div>`;
+            } else if (data.type === "private_clue") {
+                // Message Système VERT (Indice privé)
+                html = `<div class="msg"><div class="msg-content private-clue"><div class="text"><strong>Bot (Indice Privé) : </strong>${data.content}</div></div></div>`;
+            } else if (data.type === "private_error") {
+                // Message Système ROUGE (Erreur privée)
+                html = `<div class="msg"><div class="msg-content error-msg"><div class="text">${data.content}</div></div></div>`;
+            } else if (data.type === "system") {
+                // Info générale
+                html = `<div class="msg"><div class="msg-content system-msg"><div class="text">🤖 ${data.content}</div></div></div>`;
+            } else if (data.type === "win") {
+                // Victoire
+                html = `<div class="msg"><div class="msg-content win-msg"><div class="text">${data.content}</div></div></div>`;
+            }
+
+            chatBox.innerHTML += html;
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // Gestion de l'envoi
+        input.addEventListener("keypress", (e) => {
+            if (e.key === "Enter" && input.value.trim() !== "") {
+                const val = input.value.trim();
+
+                if (mode === 'CHAT') {
+                    socket.send(JSON.stringify({ type: "chat_message", content: val }));
+                } 
+                else if (mode === 'LETTER') {
+                    if(val.length === 1) {
+                        socket.send(JSON.stringify({ type: "guess_letter", content: val }));
+                    } else {
+                        addMessageToChat({type: "private_error", content: "Une seule lettre svp !"});
+                    }
+                } 
+                else if (mode === 'WORD') {
+                    socket.send(JSON.stringify({ type: "guess_word", content: val }));
+                }
+
+                input.value = "";
+            }
+        });
+    </script>
+</body>
+</html>
